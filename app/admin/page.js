@@ -3,14 +3,26 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Navbar from "../../components/Navbar";
-import { getAttendanceStats, getAllAttendance } from "../../utils/api";
+import { getAttendanceStats, getAllAttendance, getMonthlySummary } from "../../utils/api";
+
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
 
 export default function AdminPage() {
   const router = useRouter();
-  const [user, setUser] = useState(null);
-  const [stats, setStats] = useState(null);
+  const [user, setUser]                   = useState(null);
+  const [stats, setStats]                 = useState(null);
   const [recentAttendance, setRecentAttendance] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]             = useState(true);
+
+  // Monthly summary state
+  const now = new Date();
+  const [summaryYear,  setSummaryYear]  = useState(now.getFullYear());
+  const [summaryMonth, setSummaryMonth] = useState(now.getMonth() + 1);
+  const [summary,      setSummary]      = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -20,6 +32,12 @@ export default function AdminPage() {
     setUser(parsed);
     fetchData();
   }, []);
+
+  // Fetch monthly summary whenever year/month changes
+  useEffect(() => {
+    if (!user) return;
+    fetchSummary(summaryYear, summaryMonth);
+  }, [summaryYear, summaryMonth, user]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -37,6 +55,21 @@ export default function AdminPage() {
       setLoading(false);
     }
   };
+
+  const fetchSummary = async (year, month) => {
+    setSummaryLoading(true);
+    try {
+      const { data } = await getMonthlySummary(year, month);
+      setSummary(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
+  // Year options: current year and 2 previous
+  const yearOptions = [now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2];
 
   if (loading) {
     return (
@@ -64,30 +97,10 @@ export default function AdminPage() {
         {/* Stats Cards */}
         {stats && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <AdminStatCard
-              title="Total Employees"
-              value={stats.totalEmployees}
-              icon="👥"
-              color="bg-blue-50 text-blue-700 border-blue-100"
-            />
-            <AdminStatCard
-              title="Present Today"
-              value={stats.todayPresent}
-              icon="✅"
-              color="bg-green-50 text-green-700 border-green-100"
-            />
-            <AdminStatCard
-              title="Absent Today"
-              value={stats.todayAbsent}
-              icon="❌"
-              color="bg-red-50 text-red-700 border-red-100"
-            />
-            <AdminStatCard
-              title="Late Today"
-              value={stats.lateToday}
-              icon="⏰"
-              color="bg-yellow-50 text-yellow-700 border-yellow-100"
-            />
+            <AdminStatCard title="Total Employees" value={stats.totalEmployees} icon="👥" color="bg-blue-50 text-blue-700 border-blue-100" />
+            <AdminStatCard title="Present Today"   value={stats.todayPresent}   icon="✅" color="bg-green-50 text-green-700 border-green-100" />
+            <AdminStatCard title="Absent Today"    value={stats.todayAbsent}    icon="❌" color="bg-red-50 text-red-700 border-red-100" />
+            <AdminStatCard title="Late Today"      value={stats.lateToday}      icon="⏰" color="bg-yellow-50 text-yellow-700 border-yellow-100" />
           </div>
         )}
 
@@ -141,6 +154,118 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* ── Monthly Summary ──────────────────────────────────────────────────── */}
+        <div className="card">
+          {/* Header + month/year picker */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Employee Monthly Attendance</h2>
+              <p className="text-sm text-gray-500 mt-0.5">
+                {summary ? `${summary.workingDays} working days in ${MONTHS[summaryMonth - 1]} ${summaryYear}` : "Loading…"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={summaryMonth}
+                onChange={(e) => setSummaryMonth(Number(e.target.value))}
+                className="input-field !py-1.5 !text-sm w-36"
+              >
+                {MONTHS.map((m, i) => (
+                  <option key={i} value={i + 1}>{m}</option>
+                ))}
+              </select>
+              <select
+                value={summaryYear}
+                onChange={(e) => setSummaryYear(Number(e.target.value))}
+                className="input-field !py-1.5 !text-sm w-24"
+              >
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {summaryLoading ? (
+            <div className="flex justify-center py-10">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+            </div>
+          ) : !summary || summary.summary.length === 0 ? (
+            <p className="text-center text-gray-500 py-8">No employees found.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 bg-gray-50">
+                    <th className="px-4 py-3 font-medium rounded-l-lg">Employee</th>
+                    <th className="px-4 py-3 font-medium hidden sm:table-cell">Department</th>
+                    <th className="px-4 py-3 font-medium text-green-700">Present</th>
+                    <th className="px-4 py-3 font-medium text-yellow-600">Late</th>
+                    <th className="px-4 py-3 font-medium text-red-600">Absent</th>
+                    <th className="px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Working Days</th>
+                    <th className="px-4 py-3 font-medium rounded-r-lg">Attendance %</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {summary.summary.map((emp) => {
+                    const pct = emp.attendancePct;
+                    const barColor =
+                      pct >= 90 ? "bg-green-500" :
+                      pct >= 75 ? "bg-yellow-400" : "bg-red-500";
+                    return (
+                      <tr key={emp._id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-gray-900">{emp.name}</p>
+                          <p className="text-xs text-gray-400">{emp.email}</p>
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{emp.department}</td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center justify-center w-9 h-7 rounded-lg bg-green-50 text-green-700 font-bold text-sm">
+                            {emp.present}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center justify-center w-9 h-7 rounded-lg bg-yellow-50 text-yellow-700 font-bold text-sm">
+                            {emp.late}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center justify-center w-9 h-7 rounded-lg bg-red-50 text-red-600 font-bold text-sm">
+                            {emp.absent}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{emp.workingDays}</td>
+                        <td className="px-4 py-3 min-w-[130px]">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 bg-gray-100 rounded-full h-2">
+                              <div
+                                className={`h-2 rounded-full transition-all ${barColor}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className={`text-xs font-semibold w-9 text-right ${
+                              pct >= 90 ? "text-green-600" :
+                              pct >= 75 ? "text-yellow-600" : "text-red-600"
+                            }`}>{pct}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {/* Legend */}
+              <div className="flex items-center gap-4 mt-4 pt-4 border-t text-xs text-gray-500">
+                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" />≥90% Good</div>
+                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-yellow-400 inline-block" />75–89% Average</div>
+                <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" />&lt;75% Poor</div>
+                <span className="ml-auto text-gray-400">Present + Late counted as attended</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Today's Attendance */}

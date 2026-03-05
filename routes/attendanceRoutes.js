@@ -255,6 +255,74 @@ router.get("/stats", protect, adminOnly, async (req, res) => {
   }
 });
 
+// @route   GET /api/attendance/monthly-summary
+// @desc    Employee-wise monthly attendance summary
+// @access  Private/Admin
+router.get("/monthly-summary", protect, adminOnly, async (req, res) => {
+  try {
+    const now = new Date();
+    const year  = parseInt(req.query.year  || now.getFullYear());
+    const month = parseInt(req.query.month || now.getMonth() + 1); // 1-12
+    const mm    = String(month).padStart(2, "0");
+    const prefix = `${year}-${mm}`; // "YYYY-MM"
+
+    // Working days (Mon–Fri) in the requested month
+    const daysInMonth = new Date(year, month, 0).getDate();
+    let workingDays = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dow = new Date(year, month - 1, d).getDay(); // 0=Sun,6=Sat
+      if (dow !== 0 && dow !== 6) workingDays++;
+    }
+
+    // All active employees
+    const employees = await User.find({ role: "employee", isActive: true })
+      .select("name email department")
+      .lean();
+
+    // All attendance records for the month
+    const records = await Attendance.find({ date: { $regex: `^${prefix}` } })
+      .select("userId status date")
+      .lean();
+
+    // Group by userId
+    const byUser = {};
+    for (const r of records) {
+      const uid = String(r.userId);
+      if (!byUser[uid]) byUser[uid] = { present: 0, late: 0 };
+      if (r.status === "present") byUser[uid].present++;
+      else if (r.status === "late") byUser[uid].late++;
+    }
+
+    const summary = employees.map((emp) => {
+      const uid    = String(emp._id);
+      const present = byUser[uid]?.present || 0;
+      const late    = byUser[uid]?.late    || 0;
+      const attended = present + late;
+      const absent   = Math.max(0, workingDays - attended);
+      const pct      = workingDays > 0 ? Math.round((attended / workingDays) * 100) : 0;
+      return {
+        _id:        emp._id,
+        name:       emp.name,
+        email:      emp.email,
+        department: emp.department || "—",
+        present,
+        late,
+        absent,
+        workingDays,
+        attendancePct: pct,
+      };
+    });
+
+    // Sort by name
+    summary.sort((a, b) => a.name.localeCompare(b.name));
+
+    res.json({ year, month, workingDays, summary });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 // @route   PUT /api/attendance/:id
 // @desc    Edit an attendance record (admin)
 // @access  Private/Admin

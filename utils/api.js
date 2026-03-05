@@ -77,5 +77,7 @@ export const exportAttendance = (params = {}) => {
   return api.get(`/attendance/export?${query}`);
 };
 export const getAttendanceStats = () => api.get("/attendance/stats");
+export const getMonthlySummary = (year, month) =>
+  api.get(`/attendance/monthly-summary?year=${year}&month=${month}`);
 
 export default api;
