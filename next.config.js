@@ -1,8 +1,7 @@
 const path = require("path");
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
-// Strip trailing /api so rewrite destination path doesn't double it
-const BACKEND_ORIGIN = BACKEND_URL.replace(/\/api$/, "");
+const isDev = process.env.NODE_ENV !== "production";
+const DEV_BACKEND = "http://localhost:5001";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -13,15 +12,19 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
   },
-  async rewrites() {
-    return [
-      {
-        // Proxy /api/:path* → Express backend at :5001/api/:path*
-        source: "/api/:path*",
-        destination: `${BACKEND_ORIGIN}/api/:path*`,
-      },
-    ];
-  },
+  // In development, proxy /api/* to the local Express server on port 5001.
+  // In production (Vercel), /api/* is handled by the Vercel serverless function
+  // in api/index.js — no rewrite needed.
+  ...(isDev && {
+    async rewrites() {
+      return [
+        {
+          source: "/api/:path*",
+          destination: `${DEV_BACKEND}/api/:path*`,
+        },
+      ];
+    },
+  }),
 };
 
 module.exports = nextConfig;
