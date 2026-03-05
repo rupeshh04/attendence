@@ -255,6 +255,48 @@ router.get("/stats", protect, adminOnly, async (req, res) => {
   }
 });
 
+// @route   GET /api/attendance/monthly-calendar
+// @desc    Date-wise attendance calendar for one employee (admin: any, employee: own)
+// @access  Private
+router.get("/monthly-calendar", protect, async (req, res) => {
+  try {
+    const { year, month, employeeId } = req.query;
+    const now = new Date();
+    const y  = parseInt(year  || now.getFullYear());
+    const m  = parseInt(month || now.getMonth() + 1);
+    const mm = String(m).padStart(2, "0");
+
+    // Employees can only query their own; admins can query any
+    let userId = req.user._id;
+    if (req.user.role === "admin" && employeeId) {
+      userId = employeeId;
+    } else if (req.user.role !== "admin" && employeeId &&
+               String(employeeId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const records = await Attendance.find({
+      userId,
+      date: { $regex: `^${y}-${mm}` },
+    }).select("date status time checkoutTime").lean();
+
+    // { "YYYY-MM-DD": { status, time, checkoutTime } }
+    const dateMap = {};
+    for (const r of records) {
+      dateMap[r.date] = {
+        status:       r.status,
+        time:         r.time || null,
+        checkoutTime: r.checkoutTime || null,
+      };
+    }
+
+    res.json({ year: y, month: m, dateMap });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 // @route   GET /api/attendance/monthly-summary
 // @desc    Employee-wise monthly attendance summary
 // @access  Private/Admin
@@ -266,12 +308,12 @@ router.get("/monthly-summary", protect, adminOnly, async (req, res) => {
     const mm    = String(month).padStart(2, "0");
     const prefix = `${year}-${mm}`; // "YYYY-MM"
 
-    // Working days (Mon–Fri) in the requested month
+    // Working days (Mon–Sat, Sunday off) in the requested month
     const daysInMonth = new Date(year, month, 0).getDate();
     let workingDays = 0;
     for (let d = 1; d <= daysInMonth; d++) {
       const dow = new Date(year, month - 1, d).getDay(); // 0=Sun,6=Sat
-      if (dow !== 0 && dow !== 6) workingDays++;
+      if (dow !== 0) workingDays++; // Only Sunday is off
     }
 
     // All active employees

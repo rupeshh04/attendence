@@ -3,22 +3,32 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "../../components/Navbar";
 import CameraModal from "../../components/CameraModal";
-import { markAttendance, checkoutAttendance, getMyAttendance, getTodayStatus } from "../../utils/api";
+import { markAttendance, checkoutAttendance, getMyAttendance, getTodayStatus, getMonthlyCalendar } from "../../utils/api";
+
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const DAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
-  const [cameraMode, setCameraMode] = useState("checkin"); // 'checkin' | 'checkout'
+  const [cameraMode, setCameraMode] = useState("checkin");
   const [todayMarked, setTodayMarked] = useState(false);
   const [todayCheckedOut, setTodayCheckedOut] = useState(false);
   const [todayRecord, setTodayRecord] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [marking, setMarking] = useState(false);
-  const [message, setMessage] = useState(null); // { type: 'success'|'error', text }
+  const [message, setMessage] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+
+  // Calendar state
+  const nowRef = new Date();
+  const [calYear,  setCalYear]  = useState(nowRef.getFullYear());
+  const [calMonth, setCalMonth] = useState(nowRef.getMonth() + 1);
+  const [calData,  setCalData]  = useState(null);
+  const [calLoading, setCalLoading] = useState(false);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -28,6 +38,11 @@ export default function DashboardPage() {
     setUser(parsed);
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchCalendar(calYear, calMonth);
+  }, [calYear, calMonth, user]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -49,6 +64,29 @@ export default function DashboardPage() {
     }
   };
 
+  const fetchCalendar = async (year, month) => {
+    setCalLoading(true);
+    try {
+      const { data } = await getMonthlyCalendar(year, month);
+      setCalData(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCalLoading(false);
+    }
+  };
+
+  const prevMonth = () => {
+    if (calMonth === 1) { setCalYear(y => y - 1); setCalMonth(12); }
+    else setCalMonth(m => m - 1);
+  };
+  const nextMonth = () => {
+    const now = new Date();
+    if (calYear > now.getFullYear() || (calYear === now.getFullYear() && calMonth >= now.getMonth() + 1)) return;
+    if (calMonth === 12) { setCalYear(y => y + 1); setCalMonth(1); }
+    else setCalMonth(m => m + 1);
+  };
+
   const loadMore = async (page) => {
     try {
       const res = await getMyAttendance(page);
@@ -61,7 +99,6 @@ export default function DashboardPage() {
     setShowCamera(false);
     setMarking(true);
     setMessage(null);
-    // Pass local time fields so the server records the user's timezone, not UTC
     const timePayload = { photo, latitude, longitude, clientDate, clientTime, clientHour, clientMinute };
     try {
       if (cameraMode === "checkout") {
@@ -72,11 +109,9 @@ export default function DashboardPage() {
         setMessage({ type: "success", text: "Attendance marked successfully!" });
       }
       fetchData();
+      fetchCalendar(calYear, calMonth);
     } catch (err) {
-      setMessage({
-        type: "error",
-        text: err.response?.data?.message || "Action failed.",
-      });
+      setMessage({ type: "error", text: err.response?.data?.message || "Action failed." });
     } finally {
       setMarking(false);
     }
@@ -93,6 +128,8 @@ export default function DashboardPage() {
       </div>
     );
   }
+
+  const isCurrentMonth = calYear === nowRef.getFullYear() && calMonth === nowRef.getMonth() + 1;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-6">
@@ -129,13 +166,11 @@ export default function DashboardPage() {
 
         {/* Alert message */}
         {message && (
-          <div
-            className={`rounded-xl p-3 sm:p-4 flex items-start gap-3 ${
-              message.type === "success"
-                ? "bg-green-50 border border-green-200 text-green-800"
-                : "bg-red-50 border border-red-200 text-red-800"
-            }`}
-          >
+          <div className={`rounded-xl p-3 sm:p-4 flex items-start gap-3 ${
+            message.type === "success"
+              ? "bg-green-50 border border-green-200 text-green-800"
+              : "bg-red-50 border border-red-200 text-red-800"
+          }`}>
             <span className="text-base sm:text-lg shrink-0">{message.type === "success" ? "✅" : "❌"}</span>
             <p className="font-medium text-sm sm:text-base">{message.text}</p>
           </div>
@@ -155,13 +190,10 @@ export default function DashboardPage() {
               </p>
             </div>
             <div className="flex gap-2 flex-col sm:flex-row">
-              {/* Check In button */}
               <button
                 onClick={() => { setCameraMode("checkin"); setShowCamera(true); }}
                 disabled={todayMarked || marking}
-                className={`w-full sm:w-auto shrink-0 btn-primary px-5 py-3 flex items-center justify-center gap-2 text-sm sm:text-base ${
-                  todayMarked ? "opacity-50 cursor-not-allowed" : ""
-                }`}
+                className={`w-full sm:w-auto shrink-0 btn-primary px-5 py-3 flex items-center justify-center gap-2 text-sm sm:text-base ${todayMarked ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 {marking && cameraMode === "checkin" ? (
                   <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />Submitting...</>
@@ -175,15 +207,12 @@ export default function DashboardPage() {
                   </>
                 )}
               </button>
-              {/* Check Out button — only visible after check-in */}
               {todayMarked && (
                 <button
                   onClick={() => { setCameraMode("checkout"); setShowCamera(true); }}
                   disabled={todayCheckedOut || marking}
                   className={`w-full sm:w-auto shrink-0 px-5 py-3 flex items-center justify-center gap-2 text-sm sm:text-base font-semibold rounded-lg transition-colors ${
-                    todayCheckedOut
-                      ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                      : "bg-orange-500 hover:bg-orange-600 text-white"
+                    todayCheckedOut ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-orange-500 hover:bg-orange-600 text-white"
                   }`}
                 >
                   {marking && cameraMode === "checkout" ? (
@@ -206,18 +235,48 @@ export default function DashboardPage() {
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <StatCard label="This Month" value={countThisMonth(history)} color="blue" />
-          <StatCard label="On Time" value={history.filter((h) => h.status === "present").length} color="green" />
-          <StatCard label="Late" value={history.filter((h) => h.status === "late").length} color="yellow" />
-          <StatCard label="Total Days" value={history.length} color="purple" />
+          <StatCard label="On Time"    value={history.filter((h) => h.status === "present").length} color="green" />
+          <StatCard label="Late"       value={history.filter((h) => h.status === "late").length}    color="yellow" />
+          <StatCard label="Total Days" value={history.length}                                       color="purple" />
+        </div>
+
+        {/* ── Monthly Calendar ───────────────────────────────────────────────── */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base sm:text-lg font-bold text-gray-900">Monthly Calendar</h2>
+            <div className="flex items-center gap-1">
+              <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <span className="text-sm font-semibold text-gray-700 min-w-[130px] text-center">
+                {MONTHS[calMonth - 1]} {calYear}
+              </span>
+              <button onClick={nextMonth} disabled={isCurrentMonth}
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {calLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-blue-600" />
+            </div>
+          ) : (
+            <MonthCalendar year={calYear} month={calMonth} dateMap={calData?.dateMap || {}} />
+          )}
         </div>
 
         {/* Attendance History */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base sm:text-lg font-bold text-gray-900">Recent Attendance</h2>
-            <a href="/dashboard/history" className="text-xs sm:text-sm text-blue-600 hover:underline font-medium">
-              View all →
-            </a>
+            <a href="/dashboard/history" className="text-xs sm:text-sm text-blue-600 hover:underline font-medium">View all →</a>
           </div>
 
           {history.length === 0 ? (
@@ -227,7 +286,6 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
-              {/* Desktop table */}
               <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -245,25 +303,21 @@ export default function DashboardPage() {
                         <td className="py-3 font-medium text-gray-900">{formatDate(record.date)}</td>
                         <td className="py-3 text-gray-600 text-sm">{record.time}</td>
                         <td className="py-3 text-sm">
-                          {record.checkoutTime ? (
-                            <span className="text-orange-600 font-medium">{record.checkoutTime}</span>
-                          ) : (
-                            <span className="text-gray-300 text-xs">—</span>
-                          )}
+                          {record.checkoutTime
+                            ? <span className="text-orange-600 font-medium">{record.checkoutTime}</span>
+                            : <span className="text-gray-300 text-xs">—</span>}
                         </td>
                         <td className="py-3">
-                          <span className={record.status === "present" ? "badge-present" : "badge-late"}>
-                            {record.status}
-                          </span>
+                          <span className={record.status === "present" ? "badge-present" : "badge-late"}>{record.status}</span>
                         </td>
                         <td className="py-3">
                           <div className="flex items-center gap-1.5">
                             <a href={record.photo} target="_blank" rel="noreferrer">
-                              <img src={record.photo} alt="check-in" className="w-8 h-8 rounded-lg object-cover border-2 border-green-200" title="Check-in" />
+                              <img src={record.photo} alt="check-in" className="w-8 h-8 rounded-lg object-cover border-2 border-green-200" />
                             </a>
                             {record.checkoutPhoto && (
                               <a href={record.checkoutPhoto} target="_blank" rel="noreferrer">
-                                <img src={record.checkoutPhoto} alt="check-out" className="w-8 h-8 rounded-lg object-cover border-2 border-orange-200" title="Check-out" />
+                                <img src={record.checkoutPhoto} alt="check-out" className="w-8 h-8 rounded-lg object-cover border-2 border-orange-200" />
                               </a>
                             )}
                           </div>
@@ -274,7 +328,6 @@ export default function DashboardPage() {
                 </table>
               </div>
 
-              {/* Mobile cards */}
               <div className="sm:hidden space-y-3">
                 {history.map((record) => (
                   <div key={record._id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
@@ -302,34 +355,20 @@ export default function DashboardPage() {
                 ))}
               </div>
 
-              {/* Pagination */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
-                  <button
-                    onClick={() => loadMore(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1.5 rounded-lg text-sm bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
+                  <button onClick={() => loadMore(currentPage - 1)} disabled={currentPage === 1}
+                    className="px-3 py-1.5 rounded-lg text-sm bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed">
                     ← Prev
                   </button>
                   {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => loadMore(p)}
-                      className={`w-8 h-8 rounded-lg text-sm font-medium ${
-                        p === currentPage
-                          ? "bg-blue-600 text-white"
-                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                      }`}
-                    >
+                    <button key={p} onClick={() => loadMore(p)}
+                      className={`w-8 h-8 rounded-lg text-sm font-medium ${p === currentPage ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
                       {p}
                     </button>
                   ))}
-                  <button
-                    onClick={() => loadMore(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 rounded-lg text-sm bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
+                  <button onClick={() => loadMore(currentPage + 1)} disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 rounded-lg text-sm bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed">
                     Next →
                   </button>
                 </div>
@@ -346,6 +385,84 @@ export default function DashboardPage() {
           onClose={() => setShowCamera(false)}
         />
       )}
+    </div>
+  );
+}
+
+// ── Shared Calendar Component ─────────────────────────────────────────────────
+function MonthCalendar({ year, month, dateMap }) {
+  const todayStr = new Date().toLocaleDateString("en-CA");
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const firstDow   = new Date(year, month - 1, 1).getDay(); // 0=Sun
+  const mm = String(month).padStart(2, "0");
+
+  // Blank pads + day numbers
+  const cells = [
+    ...Array(firstDow).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+
+  return (
+    <div>
+      {/* Day-of-week headers */}
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {DAY_LABELS.map((d) => (
+          <div key={d} className="text-center text-xs font-semibold text-gray-400 py-1">{d}</div>
+        ))}
+      </div>
+
+      {/* Day cells */}
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((day, idx) => {
+          if (!day) return <div key={`b${idx}`} />;
+          const dateStr = `${year}-${mm}-${String(day).padStart(2, "0")}`;
+          const rec      = dateMap[dateStr];
+          const dow      = new Date(year, month - 1, day).getDay();
+          const isWeekend = dow === 0; // Only Sunday off
+          const isFuture  = dateStr > todayStr;
+          const isToday   = dateStr === todayStr;
+
+          let bg = "bg-white";
+          let numColor = "text-gray-700";
+          let dotColor = "";
+          let label = "";
+
+          if (isWeekend) {
+            bg = "bg-gray-50"; numColor = "text-gray-400"; label = "Sunday Off";
+          } else if (isFuture) {
+            bg = "bg-white"; numColor = "text-gray-300";
+          } else if (rec?.status === "present") {
+            bg = "bg-green-50"; numColor = "text-green-700"; dotColor = "bg-green-500"; label = `Present · ${rec.time}${rec.checkoutTime ? " → "+rec.checkoutTime : ""}`;
+          } else if (rec?.status === "late") {
+            bg = "bg-yellow-50"; numColor = "text-yellow-700"; dotColor = "bg-yellow-400"; label = `Late · ${rec.time}${rec.checkoutTime ? " → "+rec.checkoutTime : ""}`;
+          } else {
+            // Past working day, no record
+            bg = "bg-red-50"; numColor = "text-red-500"; dotColor = "bg-red-400"; label = "Absent";
+          }
+
+          return (
+            <div
+              key={dateStr}
+              title={label}
+              className={`relative rounded-lg p-1.5 min-h-[42px] flex flex-col items-center justify-center ${bg} ${isToday ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}
+            >
+              <span className={`text-xs font-bold leading-none ${numColor}`}>{day}</span>
+              {dotColor && (
+                <span className={`mt-1 w-1.5 h-1.5 rounded-full ${dotColor}`} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-4 pt-3 border-t text-xs text-gray-500">
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />Present</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" />Late</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" />Absent</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-gray-300 inline-block" />Sunday Off</span>
+        <span className="flex items-center gap-1 ml-auto"><span className="w-3 h-3 rounded border-2 border-blue-500 inline-block" />Today</span>
+      </div>
     </div>
   );
 }
@@ -374,7 +491,7 @@ function getGreeting() {
 
 function countThisMonth(history) {
   const month = new Date().getMonth();
-  const year = new Date().getFullYear();
+  const year  = new Date().getFullYear();
   return history.filter((h) => {
     const d = new Date(h.date);
     return d.getMonth() === month && d.getFullYear() === year;
@@ -386,3 +503,4 @@ function formatDate(dateStr) {
     weekday: "short", month: "short", day: "numeric",
   });
 }
+

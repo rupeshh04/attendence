@@ -79,5 +79,9 @@ export const exportAttendance = (params = {}) => {
 export const getAttendanceStats = () => api.get("/attendance/stats");
 export const getMonthlySummary = (year, month) =>
   api.get(`/attendance/monthly-summary?year=${year}&month=${month}`);
+export const getMonthlyCalendar = (year, month, employeeId) => {
+  const params = new URLSearchParams({ year, month, ...(employeeId ? { employeeId } : {}) }).toString();
+  return api.get(`/attendance/monthly-calendar?${params}`);
+};
 
 export default api;

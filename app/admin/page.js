@@ -1,9 +1,9 @@
 "use client";
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Navbar from "../../components/Navbar";
-import { getAttendanceStats, getAllAttendance, getMonthlySummary } from "../../utils/api";
+import { getAttendanceStats, getAllAttendance, getMonthlySummary, getMonthlyCalendar } from "../../utils/api";
 
 const MONTHS = [
   "January","February","March","April","May","June",
@@ -23,6 +23,11 @@ export default function AdminPage() {
   const [summaryMonth, setSummaryMonth] = useState(now.getMonth() + 1);
   const [summary,      setSummary]      = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+
+  // Per-employee calendar expansion
+  const [expandedEmpId, setExpandedEmpId] = useState(null);
+  const [empCalData,    setEmpCalData]    = useState({});
+  const [empCalLoading, setEmpCalLoading] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -67,6 +72,22 @@ export default function AdminPage() {
       setSummaryLoading(false);
     }
   };
+
+  const toggleEmpCalendar = async (empId) => {
+    if (expandedEmpId === empId) { setExpandedEmpId(null); return; }
+    setExpandedEmpId(empId);
+    if (empCalData[empId]) return; // already fetched
+    setEmpCalLoading(true);
+    try {
+      const { data } = await getMonthlyCalendar(summaryYear, summaryMonth, empId);
+      setEmpCalData((prev) => ({ ...prev, [empId]: data }));
+    } catch (e) { console.error(e); }
+    finally { setEmpCalLoading(false); }
+  };
+
+  // Clear cached calendars when month/year changes
+  const handleSummaryMonthChange = (m) => { setSummaryMonth(m); setExpandedEmpId(null); setEmpCalData({}); };
+  const handleSummaryYearChange  = (y) => { setSummaryYear(y);  setExpandedEmpId(null); setEmpCalData({}); };
 
   // Year options: current year and 2 previous
   const yearOptions = [now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2];
@@ -169,7 +190,7 @@ export default function AdminPage() {
             <div className="flex items-center gap-2">
               <select
                 value={summaryMonth}
-                onChange={(e) => setSummaryMonth(Number(e.target.value))}
+                onChange={(e) => handleSummaryMonthChange(Number(e.target.value))}
                 className="input-field !py-1.5 !text-sm w-36"
               >
                 {MONTHS.map((m, i) => (
@@ -178,7 +199,7 @@ export default function AdminPage() {
               </select>
               <select
                 value={summaryYear}
-                onChange={(e) => setSummaryYear(Number(e.target.value))}
+                onChange={(e) => handleSummaryYearChange(Number(e.target.value))}
                 className="input-field !py-1.5 !text-sm w-24"
               >
                 {yearOptions.map((y) => (
@@ -205,7 +226,8 @@ export default function AdminPage() {
                     <th className="px-4 py-3 font-medium text-yellow-600">Late</th>
                     <th className="px-4 py-3 font-medium text-red-600">Absent</th>
                     <th className="px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Working Days</th>
-                    <th className="px-4 py-3 font-medium rounded-r-lg">Attendance %</th>
+                    <th className="px-4 py-3 font-medium">Attendance %</th>
+                    <th className="px-4 py-3 font-medium rounded-r-lg text-center">Calendar</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -214,44 +236,83 @@ export default function AdminPage() {
                     const barColor =
                       pct >= 90 ? "bg-green-500" :
                       pct >= 75 ? "bg-yellow-400" : "bg-red-500";
+                    const isExpanded = expandedEmpId === emp._id;
+                    const calEntry   = empCalData[emp._id];
                     return (
-                      <tr key={emp._id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-gray-900">{emp.name}</p>
-                          <p className="text-xs text-gray-400">{emp.email}</p>
-                        </td>
-                        <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{emp.department}</td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex items-center justify-center w-9 h-7 rounded-lg bg-green-50 text-green-700 font-bold text-sm">
-                            {emp.present}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex items-center justify-center w-9 h-7 rounded-lg bg-yellow-50 text-yellow-700 font-bold text-sm">
-                            {emp.late}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex items-center justify-center w-9 h-7 rounded-lg bg-red-50 text-red-600 font-bold text-sm">
-                            {emp.absent}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{emp.workingDays}</td>
-                        <td className="px-4 py-3 min-w-[130px]">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 bg-gray-100 rounded-full h-2">
-                              <div
-                                className={`h-2 rounded-full transition-all ${barColor}`}
-                                style={{ width: `${pct}%` }}
-                              />
+                      <React.Fragment key={emp._id}>
+                        <tr className={`transition-colors ${isExpanded ? "bg-blue-50" : "hover:bg-gray-50"}`}>
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-gray-900">{emp.name}</p>
+                            <p className="text-xs text-gray-400">{emp.email}</p>
+                          </td>
+                          <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{emp.department}</td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex items-center justify-center w-9 h-7 rounded-lg bg-green-50 text-green-700 font-bold text-sm">
+                              {emp.present}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex items-center justify-center w-9 h-7 rounded-lg bg-yellow-50 text-yellow-700 font-bold text-sm">
+                              {emp.late}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex items-center justify-center w-9 h-7 rounded-lg bg-red-50 text-red-600 font-bold text-sm">
+                              {emp.absent}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{emp.workingDays}</td>
+                          <td className="px-4 py-3 min-w-[130px]">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 bg-gray-100 rounded-full h-2">
+                                <div
+                                  className={`h-2 rounded-full transition-all ${barColor}`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              <span className={`text-xs font-semibold w-9 text-right ${
+                                pct >= 90 ? "text-green-600" :
+                                pct >= 75 ? "text-yellow-600" : "text-red-600"
+                              }`}>{pct}%</span>
                             </div>
-                            <span className={`text-xs font-semibold w-9 text-right ${
-                              pct >= 90 ? "text-green-600" :
-                              pct >= 75 ? "text-yellow-600" : "text-red-600"
-                            }`}>{pct}%</span>
-                          </div>
-                        </td>
-                      </tr>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => toggleEmpCalendar(emp._id)}
+                              title={isExpanded ? "Hide calendar" : "Show calendar"}
+                              className={`p-1.5 rounded-lg transition-colors text-base ${
+                                isExpanded
+                                  ? "bg-blue-100 text-blue-700"
+                                  : "hover:bg-gray-100 text-gray-500"
+                              }`}
+                            >
+                              📅
+                            </button>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr key={`cal-${emp._id}`}>
+                            <td colSpan={8} className="px-4 pb-4 bg-blue-50 border-b border-blue-100">
+                              <div className="bg-white rounded-xl border border-blue-100 p-4 mt-1">
+                                <p className="text-sm font-semibold text-gray-700 mb-3">
+                                  {emp.name} — {MONTHS[summaryMonth - 1]} {summaryYear}
+                                </p>
+                                {empCalLoading && !calEntry ? (
+                                  <div className="flex justify-center py-6">
+                                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+                                  </div>
+                                ) : calEntry ? (
+                                  <MonthCalendar
+                                    year={summaryYear}
+                                    month={summaryMonth}
+                                    dateMap={calEntry.dateMap || {}}
+                                  />
+                                ) : null}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
@@ -320,6 +381,65 @@ export default function AdminPage() {
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+// ── Shared Monthly Calendar Component ───────────────────────────────────────
+const MONTHS_LABEL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const DAY_LABELS   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+function MonthCalendar({ year, month, dateMap }) {
+  const todayStr   = new Date().toLocaleDateString("en-CA");
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const firstDow    = new Date(year, month - 1, 1).getDay();
+  const mm          = String(month).padStart(2, "0");
+  const cells = [
+    ...Array(firstDow).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+
+  return (
+    <div>
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {DAY_LABELS.map((d) => (
+          <div key={d} className="text-center text-xs font-semibold text-gray-400 py-1">{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((day, idx) => {
+          if (!day) return <div key={`b${idx}`} />;
+          const dateStr   = `${year}-${mm}-${String(day).padStart(2, "0")}`;
+          const rec        = dateMap[dateStr];
+          const dow        = new Date(year, month - 1, day).getDay();
+          const isWeekend  = dow === 0; // Only Sunday off
+          const isFuture   = dateStr > todayStr;
+          const isToday    = dateStr === todayStr;
+
+          let bg = "bg-white", numColor = "text-gray-700", dotColor = "", label = "";
+
+          if (isWeekend)              { bg = "bg-gray-50";   numColor = "text-gray-400"; label = "Sunday Off"; }
+          else if (isFuture)          { bg = "bg-white";      numColor = "text-gray-300"; }
+          else if (rec?.status === "present") { bg = "bg-green-50";  numColor = "text-green-700"; dotColor = "bg-green-500";  label = `Present · ${rec.time}${rec.checkoutTime ? " → "+rec.checkoutTime : ""}`; }
+          else if (rec?.status === "late")    { bg = "bg-yellow-50"; numColor = "text-yellow-700"; dotColor = "bg-yellow-400"; label = `Late · ${rec.time}${rec.checkoutTime ? " → "+rec.checkoutTime : ""}`; }
+          else                        { bg = "bg-red-50";    numColor = "text-red-500";   dotColor = "bg-red-400";   label = "Absent"; }
+
+          return (
+            <div key={dateStr} title={label}
+              className={`relative rounded-lg p-1.5 min-h-[42px] flex flex-col items-center justify-center ${bg} ${isToday ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}>
+              <span className={`text-xs font-bold leading-none ${numColor}`}>{day}</span>
+              {dotColor && <span className={`mt-1 w-1.5 h-1.5 rounded-full ${dotColor}`} />}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-4 pt-3 border-t text-xs text-gray-500">
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />Present</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" />Late</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" />Absent</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-gray-300 inline-block" />Sunday Off</span>
+        <span className="flex items-center gap-1 ml-auto"><span className="w-3 h-3 rounded border-2 border-blue-500 inline-block" />Today</span>
+      </div>
     </div>
   );
 }
