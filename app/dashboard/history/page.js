@@ -485,7 +485,7 @@ function getWorkingDays(year, month) {
   let count = 0;
   for (let d = 1; d <= totalDays; d++) {
     const day = new Date(year, month - 1, d).getDay(); // 0=Sun, 6=Sat
-    if (day !== 0 && day !== 6) count++;
+    if (day !== 0) count++; // Mon–Sat, only Sunday off
   }
   return count;
 }

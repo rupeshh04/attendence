@@ -234,10 +234,10 @@ export default function DashboardPage() {
 
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-          <StatCard label="This Month" value={countThisMonth(history)} color="blue" />
-          <StatCard label="On Time"    value={history.filter((h) => h.status === "present").length} color="green" />
-          <StatCard label="Late"       value={history.filter((h) => h.status === "late").length}    color="yellow" />
-          <StatCard label="Total Days" value={history.length}                                       color="purple" />
+          <StatCard label="Attended"    value={countThisMonth(history)}                                        color="blue" />
+          <StatCard label="On Time"     value={history.filter((h) => h.status === "present").length}           color="green" />
+          <StatCard label="Late"        value={history.filter((h) => h.status === "late").length}              color="yellow" />
+          <StatCard label="Working Days" value={workingDaysThisMonth()}                                        color="purple" />
         </div>
 
         {/* ── Monthly Calendar ───────────────────────────────────────────────── */}
@@ -496,6 +496,20 @@ function countThisMonth(history) {
     const d = new Date(h.date);
     return d.getMonth() === month && d.getFullYear() === year;
   }).length;
+}
+
+// Count Mon–Sat days in the current month up to today
+function workingDaysThisMonth() {
+  const now   = new Date();
+  const year  = now.getFullYear();
+  const month = now.getMonth(); // 0-based
+  const today = now.getDate();
+  let count = 0;
+  for (let d = 1; d <= today; d++) {
+    const dow = new Date(year, month, d).getDay();
+    if (dow !== 0) count++; // exclude Sunday
+  }
+  return count;
 }
 
 function formatDate(dateStr) {
