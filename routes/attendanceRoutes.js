@@ -230,6 +230,28 @@ router.get("/export", protect, adminOnly, async (req, res) => {
   }
 });
 
+// @route   GET /api/attendance/stats
+// @desc    Get attendance stats for admin dashboard
+// @access  Private/Admin
+// NOTE: defined BEFORE /:id routes so Express matches it correctly
+router.get("/stats", protect, adminOnly, async (req, res) => {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    const totalEmployees = await User.countDocuments({ role: "employee", isActive: true });
+    const todayAttendance = await Attendance.countDocuments({ date: today });
+    const lateToday = await Attendance.countDocuments({ date: today, status: "late" });
+
+    res.json({
+      totalEmployees,
+      todayPresent: todayAttendance,
+      todayAbsent: totalEmployees - todayAttendance,
+      lateToday,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 // @route   PUT /api/attendance/:id
 // @desc    Edit an attendance record (admin)
 // @access  Private/Admin
@@ -266,27 +288,6 @@ router.delete("/:id", protect, adminOnly, async (req, res) => {
     const record = await Attendance.findByIdAndDelete(req.params.id);
     if (!record) return res.status(404).json({ message: "Record not found" });
     res.json({ message: "Record deleted" });
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// @route   GET /api/attendance/stats
-// @desc    Get attendance stats for admin dashboard
-// @access  Private/Admin
-router.get("/stats", protect, adminOnly, async (req, res) => {
-  try {
-    const today = new Date().toISOString().split("T")[0];
-    const totalEmployees = await User.countDocuments({ role: "employee", isActive: true });
-    const todayAttendance = await Attendance.countDocuments({ date: today });
-    const lateToday = await Attendance.countDocuments({ date: today, status: "late" });
-
-    res.json({
-      totalEmployees,
-      todayPresent: todayAttendance,
-      todayAbsent: totalEmployees - todayAttendance,
-      lateToday,
-    });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
   }

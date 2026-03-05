@@ -1,7 +1,12 @@
 import axios from "axios";
 
+// In the browser, use a relative path (/api) so Next.js rewrites proxy the
+// request to the Express backend — avoids CORS and port-mismatch 404s.
+// Falls back to the absolute URL for SSR or when the proxy isn't available.
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
+  typeof window !== "undefined"
+    ? "/api"
+    : process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
