@@ -57,16 +57,18 @@ export default function DashboardPage() {
     } catch (e) {}
   };
 
-  const handleCapture = async ({ photo, latitude, longitude }) => {
+  const handleCapture = async ({ photo, latitude, longitude, clientDate, clientTime, clientHour, clientMinute }) => {
     setShowCamera(false);
     setMarking(true);
     setMessage(null);
+    // Pass local time fields so the server records the user's timezone, not UTC
+    const timePayload = { photo, latitude, longitude, clientDate, clientTime, clientHour, clientMinute };
     try {
       if (cameraMode === "checkout") {
-        await checkoutAttendance({ photo, latitude, longitude });
+        await checkoutAttendance(timePayload);
         setMessage({ type: "success", text: "Checked out successfully!" });
       } else {
-        await markAttendance({ photo, latitude, longitude });
+        await markAttendance(timePayload);
         setMessage({ type: "success", text: "Attendance marked successfully!" });
       }
       fetchData();

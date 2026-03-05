@@ -59,7 +59,11 @@ export const getMyAttendance = (page = 1, filters = {}) => {
   const params = new URLSearchParams({ page, limit: 20, ...filters }).toString();
   return api.get(`/attendance/my?${params}`);
 };
-export const getTodayStatus = () => api.get("/attendance/today-status");
+// Pass the client's local date so the server doesn't use its UTC clock
+export const getTodayStatus = () => {
+  const clientDate = new Date().toLocaleDateString("en-CA"); // "YYYY-MM-DD" local
+  return api.get(`/attendance/today-status?clientDate=${clientDate}`);
+};
 
 // ── Admin Attendance ──────────────────────────────────────────────────────────
 export const getAllAttendance = (params = {}) => {

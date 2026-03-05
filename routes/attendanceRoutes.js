@@ -24,7 +24,7 @@ const getDistanceInMeters = (lat1, lon1, lat2, lon2) => {
 // @access  Private
 router.post("/mark", protect, async (req, res) => {
   try {
-    const { photo, latitude, longitude } = req.body;
+    const { photo, latitude, longitude, clientDate, clientTime, clientHour, clientMinute } = req.body;
 
     if (!photo || latitude === undefined || longitude === undefined) {
       return res
@@ -32,8 +32,17 @@ router.post("/mark", protect, async (req, res) => {
         .json({ message: "Photo, latitude, and longitude are required" });
     }
 
-    // Check today's date
-    const today = new Date().toISOString().split("T")[0]; // "YYYY-MM-DD"
+    // Prefer client-supplied local date/time so the recorded time is always in
+    // the user's timezone, not the server's UTC timezone (critical on Vercel).
+    const now = new Date();
+    const today = clientDate || now.toISOString().split("T")[0];
+    const timeStr = clientTime || now.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    const hours = clientHour !== undefined ? Number(clientHour) : now.getUTCHours();
+    const minutes = clientMinute !== undefined ? Number(clientMinute) : now.getUTCMinutes();
 
     const existing = await Attendance.findOne({
       userId: req.user._id,
@@ -49,16 +58,7 @@ router.post("/mark", protect, async (req, res) => {
     // Store photo as base64 directly (no Cloudinary)
     const photoUrl = photo;
 
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-
-    // Determine status: late if after 9:30 AM
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
+    // Determine status: late if after 9:30 AM (local time)
     const isLate = hours > 9 || (hours === 9 && minutes > 30);
 
     const attendance = await Attendance.create({
@@ -122,12 +122,18 @@ router.get("/my", protect, async (req, res) => {
 // @access  Private
 router.post("/checkout", protect, async (req, res) => {
   try {
-    const { photo, latitude, longitude } = req.body;
+    const { photo, latitude, longitude, clientDate, clientTime } = req.body;
     if (!photo || latitude === undefined || longitude === undefined) {
       return res.status(400).json({ message: "Photo, latitude, and longitude are required" });
     }
 
-    const today = new Date().toISOString().split("T")[0];
+    // Use client's local date so checkout matches the same date as check-in
+    const now = new Date();
+    const today = clientDate || now.toISOString().split("T")[0];
+    const timeStr = clientTime || now.toLocaleTimeString("en-US", {
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+    });
+
     const record = await Attendance.findOne({ userId: req.user._id, date: today });
 
     if (!record) {
@@ -136,11 +142,6 @@ router.post("/checkout", protect, async (req, res) => {
     if (record.checkoutTime) {
       return res.status(400).json({ message: "You have already checked out today" });
     }
-
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString("en-US", {
-      hour: "2-digit", minute: "2-digit", second: "2-digit",
-    });
 
     record.checkoutTime = timeStr;
     record.checkoutPhoto = photo;
@@ -160,7 +161,9 @@ router.post("/checkout", protect, async (req, res) => {
 // @access  Private
 router.get("/today-status", protect, async (req, res) => {
   try {
-    const today = new Date().toISOString().split("T")[0];
+    // clientDate is sent by the frontend in "YYYY-MM-DD" local time
+    // to avoid UTC offset mismatches on Vercel
+    const today = req.query.clientDate || new Date().toISOString().split("T")[0];
     const record = await Attendance.findOne({
       userId: req.user._id,
       date: today,

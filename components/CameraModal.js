@@ -78,10 +78,22 @@ export default function CameraModal({ onCapture, onClose, title = "Mark Attendan
 
   const handleSubmit = () => {
     if (!captured) return;
+    // Capture local time in the browser — avoids UTC offset issues on the server
+    const now = new Date();
     onCapture({
       photo: captured,
       latitude: location?.lat ?? 0,
       longitude: location?.lon ?? 0,
+      // "YYYY-MM-DD" in local timezone (en-CA locale gives this format)
+      clientDate: now.toLocaleDateString("en-CA"),
+      // "hh:mm:ss AM/PM" in local timezone
+      clientTime: now.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      }),
+      clientHour: now.getHours(),
+      clientMinute: now.getMinutes(),
     });
   };
 
