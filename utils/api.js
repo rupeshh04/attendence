@@ -25,15 +25,13 @@ api.interceptors.request.use((config) => {
 });
 
 // Handle 401 globally
+// Do not force logout automatically; user should be logged out manually.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        window.location.href = "/login";
-      }
+      // Keep persisted session in localStorage so browser reopen keeps user logged in.
+      // Callers can handle unauthorized responses per-screen if needed.
     }
     return Promise.reject(error);
   }

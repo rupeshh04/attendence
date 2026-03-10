@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { loginUser } from "../../utils/api";
 
@@ -8,6 +8,20 @@ export default function LoginPage() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    const storedToken = localStorage.getItem("token");
+    if (!storedUser || !storedToken) return;
+
+    try {
+      const parsed = JSON.parse(storedUser);
+      router.replace(parsed.role === "admin" ? "/admin" : "/dashboard");
+    } catch {
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+    }
+  }, [router]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
