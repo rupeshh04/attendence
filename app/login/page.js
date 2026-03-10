@@ -99,12 +99,12 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-gray-500">
+          {/* <p className="mt-6 text-center text-sm text-gray-500">
             First time?{" "}
             <a href="/setup" className="text-blue-600 hover:underline font-medium">
               Setup Admin Account
             </a>
-          </p>
+          </p> */}
         </div>
       </div>
     </div>
